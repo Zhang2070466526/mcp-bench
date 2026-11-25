@@ -3,6 +3,7 @@ import json
 import re
 import statistics
 import time
+from collections import Counter
 
 from .client import get_catalog
 from .llm import LLMClient
@@ -43,6 +44,11 @@ def extract_tool(content, all_names):
     return (c[:60] if c else "<empty>"), False
 
 
+def majority_vote(preds):
+    """返回出现次数最多的预测；并列时取先出现者。"""
+    return Counter(preds).most_common(1)[0][0]
+
+
 async def load_catalog(config, catalog_file=None):
     """返回 [{server, tools:[{name,description}]}]。优先用缓存文件，否则实时抓取。"""
     if catalog_file:
@@ -60,8 +66,11 @@ async def load_catalog(config, catalog_file=None):
     return catalogs
 
 
-async def run_eval(config, eval_set, model=None, catalog_file=None):
-    """执行评测，返回 (results, catalogs)。"""
+async def run_eval(config, eval_set, model=None, catalog_file=None, repeat=1):
+    """执行评测，返回 (results, catalogs)。
+
+    repeat > 1 时对每题采样 repeat 次，取多数投票结果，以稳定推理型模型的随机性。
+    """
     llm_cfg = dict(config["llm"])
     if model:
         llm_cfg["model"] = model
@@ -79,29 +88,38 @@ async def run_eval(config, eval_set, model=None, catalog_file=None):
             f"任务：{t['task']}\n\n"
             f"请只输出 JSON {{\"tool\": \"...\"}}。"
         )
-        t0 = time.perf_counter()
-        try:
-            content, tokens = llm.chat(SYSTEM_PROMPT, user)
-            err = None
-        except Exception as e:
-            content, tokens, err = "", (0, 0), f"{type(e).__name__}: {e}"
-        lat = time.perf_counter() - t0
+        votes = []
+        total_lat = 0.0
+        total_tokens = [0, 0]
+        any_err = None
+        for _ in range(max(1, repeat)):
+            t0 = time.perf_counter()
+            try:
+                content, tokens = llm.chat(SYSTEM_PROMPT, user)
+                pred, parse_ok = extract_tool(content, all_names)
+                total_tokens[0] += tokens[0]
+                total_tokens[1] += tokens[1]
+            except Exception as e:
+                pred, parse_ok, any_err = "<error>", False, f"{type(e).__name__}: {e}"
+            total_lat += time.perf_counter() - t0
+            votes.append({"predicted": pred, "parse_ok": parse_ok})
 
-        pred, parse_ok = (extract_tool(content, all_names) if not err
-                          else (f"<error>", False))
+        pred = majority_vote([v["predicted"] for v in votes])
         results.append({
             "id": t.get("id", i + 1),
             "task": t["task"],
             "expected": t["expected"],
             "predicted": pred,
-            "correct": (not err) and (pred == t["expected"]),
-            "parse_ok": parse_ok,
+            "correct": pred == t["expected"],
+            "parse_ok": all(v["parse_ok"] for v in votes),
             "in_catalog": pred in all_names,
             "category": t.get("category"),
             "server": t.get("server"),
-            "latency_s": round(lat, 2),
-            "tokens": tokens,
-            "error": err,
+            "repeat": repeat,
+            "votes": votes if repeat > 1 else None,
+            "latency_s": round(total_lat, 2),
+            "tokens": tuple(total_tokens),
+            "error": any_err,
         })
     return results, catalogs
 

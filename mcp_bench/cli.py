@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import sys
+from collections import Counter
 
 from . import __version__
 from .config import load
@@ -121,13 +122,18 @@ def cmd_eval(args):
     with open(args.eval_set, encoding="utf-8") as f:
         eval_set = json.load(f)
     results, _ = asyncio.run(
-        run_eval(cfg, eval_set, model=args.model, catalog_file=args.catalog)
+        run_eval(cfg, eval_set, model=args.model, catalog_file=args.catalog,
+                 repeat=args.repeat)
     )
     for r in results:
         tag = "OK " if r["correct"] else "WRONG"
+        extra = ""
+        if r.get("votes"):
+            dist = Counter(v["predicted"] for v in r["votes"])
+            extra = "  votes=" + ",".join(f"{k}:{c}" for k, c in dist.most_common())
         print(f"  [{tag}] #{r['id']:>3} {str(r['category']):<14} "
               f"期望={r['expected']:<28} 预测={r['predicted']:<28} "
-              f"{r['latency_s']*1000:6.0f}ms")
+              f"{r['latency_s']*1000:6.0f}ms{extra}")
     summary = summarize(results)
     _print_eval(summary)
     _dump(results, os.path.join(out_dir, "eval_results.json"))
@@ -171,12 +177,16 @@ def main(argv=None):
     e.add_argument("--eval-set", required=True, help="评测集 JSON 路径")
     e.add_argument("--model", help="覆盖配置中的模型")
     e.add_argument("--catalog", help="使用缓存的工具目录 (catalog.json)，避免重复抓取")
+    e.add_argument("--repeat", type=int, default=1,
+                   help="每题采样次数取多数投票 (默认 1，推理模型建议 3)")
     e.set_defaults(func=cmd_eval)
 
     a = sub.add_parser("all", help="catalog + probe + eval 全跑")
     add_common(a)
     a.add_argument("--eval-set", required=True)
     a.add_argument("--model", help="覆盖配置中的模型")
+    a.add_argument("--repeat", type=int, default=1,
+                   help="每题采样次数取多数投票 (默认 1，推理模型建议 3)")
     a.set_defaults(func=cmd_all)
 
     args = p.parse_args(argv)

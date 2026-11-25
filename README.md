@@ -9,6 +9,9 @@
 
 ---
 
+[![CI](https://github.com/Zhang2070466526/mcp-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/Zhang2070466526/mcp-bench/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 ## 特性
 
 - ✅ 三种传输统一封装：`streamable_http` / `sse` / `stdio`
@@ -75,6 +78,9 @@ mcp-bench probe --config config.json --call get_current_time --args '{}' --repea
 
 # 工具选择准确率评测
 mcp-bench eval --config config.json --eval-set examples/eval_set.example.json
+
+# 推理型模型有随机性：每题采样 3 次取多数投票，结果更稳
+mcp-bench eval --config config.json --eval-set examples/eval_set.example.json --repeat 3
 
 # 一键全跑
 mcp-bench all --config config.json --eval-set examples/eval_set.example.json
@@ -146,6 +152,7 @@ mcp-bench all --config config.json --eval-set examples/eval_set.example.json
 ## 常见问题
 
 - **模型返回空内容**：推理型模型把 token 花在思考上，调大 `llm.max_tokens`（如 4000）。
+- **同一题结果时对时错**：推理型模型即使 `temperature=0` 也可能有随机性。用 `eval --repeat 3`（多数投票）稳住结果。
 - **stdio 在 Windows 上连不上**：stdio 传输在 Windows 可能有事件循环兼容问题，优先用 `streamable_http`；或安装 `winloop` 并 `pip install mcp[cli]`。
 - **工具名对不上**：`expected` 必须和 `catalog` 输出里的 `name` 完全一致。
 

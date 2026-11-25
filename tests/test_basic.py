@@ -2,7 +2,7 @@
 import json
 
 from mcp_bench.config import load
-from mcp_bench.eval import extract_tool, build_catalog_text
+from mcp_bench.eval import extract_tool, build_catalog_text, majority_vote
 
 
 def test_extract_tool_json():
@@ -31,6 +31,13 @@ def test_build_catalog_text():
     text = build_catalog_text(cats)
     assert "【srv】" in text
     assert "- a: 描述" in text
+
+
+def test_majority_vote():
+    assert majority_vote(["a", "a", "b"]) == "a"
+    assert majority_vote(["a", "b", "b"]) == "b"
+    # 并列取先出现者
+    assert majority_vote(["a", "b"]) == "a"
 
 
 def test_config_load(tmp_path):
