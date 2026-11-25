@@ -1,5 +1,7 @@
 # mcp-bench
 
+> [English](README.en.md) | 简体中文
+
 通用的 **MCP（Model Context Protocol）服务测试与评测工具**。支持 `stdio` / `SSE` / `Streamable HTTP` 三种传输，能对**任意** MCP 服务做两件事：
 
 1. **性能探测（probe）** —— 连接/握手延迟、工具发现延迟、单个工具调用延迟
