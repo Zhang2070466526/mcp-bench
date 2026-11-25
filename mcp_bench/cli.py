@@ -11,6 +11,7 @@ from .config import load
 from .probe import run_probe
 from .eval import run_eval, summarize, load_catalog
 from .client import get_catalog
+from .sweep import run_sweep, summarize_sweep
 
 
 def _ensure_dir(path):
@@ -140,6 +141,35 @@ def cmd_eval(args):
     _write_eval_report(results, summary, cfg["llm"]["model"] if not args.model else args.model, out_dir)
 
 
+def cmd_sweep(args):
+    cfg = load(args.config)
+    out_dir = _ensure_dir(args.out_dir)
+    skip = [s.strip() for s in (args.skip or "").split(",") if s.strip()] or None
+    data = asyncio.run(run_sweep(cfg, skip=skip, repeat=args.repeat))
+    for sv in data:
+        print(f"\n=== {sv['server']} ===")
+        for r in sv["results"]:
+            if r["class"] == "readonly":
+                print(f"  [只读] {r['name']:<38} {r['latency_ms']} ms  ok={not r.get('isError', False)}")
+            elif r["class"] == "needs_args":
+                ec = r.get("error_code", r.get("error", ""))
+                print(f"  [需参] {r['name']:<38} {r['latency_ms']:7.1f}ms  ec={ec}")
+            else:
+                print(f"  [跳过] {r['name']:<38} {r['reason']}")
+    for sm in summarize_sweep(data):
+        print(f"\n--- {sm['server']} 汇总 ---")
+        print(f"  总数 {sm['total']}：只读 {sm['readonly']} / 需参数 {sm['needs_args']} / 跳过 {sm['skip']}")
+        if sm["readonly"]:
+            print(f"  只读延迟 avg {sm['readonly_avg_ms']}ms  max {sm['readonly_max_ms']}ms")
+            if sm["slowest"]:
+                print("  最慢: " + ", ".join(f"{x['name']}={x['avg_ms']}ms" for x in sm["slowest"]))
+            if sm["spikey"]:
+                print(f"  ⚠️ 高方差(疑似间歇尖峰): {sm['spikey']}")
+        if sm["needs_args"]:
+            print(f"  参数校验生效: {sm['validation_ok']}/{sm['validation_total']}")
+    _dump(data, os.path.join(out_dir, "sweep_results.json"))
+
+
 def cmd_all(args):
     print("== 1/3 导出工具目录 ==")
     cmd_catalog(args)
@@ -188,6 +218,12 @@ def main(argv=None):
     a.add_argument("--repeat", type=int, default=1,
                    help="每题采样次数取多数投票 (默认 1，推理模型建议 3)")
     a.set_defaults(func=cmd_all)
+
+    sw = sub.add_parser("sweep", help="全量扫测服务所有工具（分类+延迟+参数校验）")
+    add_common(sw)
+    sw.add_argument("--skip", help="额外跳过的工具名，逗号分隔")
+    sw.add_argument("--repeat", type=int, default=3, help="只读工具重复次数 (默认 3)")
+    sw.set_defaults(func=cmd_sweep)
 
     args = p.parse_args(argv)
     args.func(args)

@@ -86,6 +86,10 @@ mcp-bench eval --config config.json --eval-set examples/eval_set.example.json --
 
 # 一键全跑
 mcp-bench all --config config.json --eval-set examples/eval_set.example.json
+
+# 全量扫测所有工具：分类（只读/需参数/跳过）+ 延迟 + 参数校验
+mcp-bench sweep --config config.json
+mcp-bench sweep --config config.json --skip launch_edi,quit_aedt --repeat 5
 ```
 
 也可以不安装、直接 `python -m mcp_bench ...`。
