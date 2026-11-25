@@ -10,7 +10,7 @@ import time
 
 from mcp import ClientSession
 
-from .client import connect_server
+from .client import connect_server, tool_input_schema
 
 DANGEROUS_PREFIXES = ("launch_", "quit_", "close_")
 DANGEROUS_MARKERS = ("⚠️", "破坏")
@@ -71,7 +71,7 @@ async def _sweep_server(server, skip_extra, repeat):
             for t in tools:
                 name = t.name
                 desc = t.description or ""
-                required = (t.inputSchema or {}).get("required", [])
+                required = tool_input_schema(t).get("required", [])
                 cls, reason = classify_tool(name, desc, required, skip_extra)
                 if cls == "skip":
                     out.append({"name": name, "class": "skip", "reason": reason})

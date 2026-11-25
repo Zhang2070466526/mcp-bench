@@ -1,0 +1,7 @@
+{
+  "get_project_summary": { "project_path": "/abs/path/to/project.epp" },
+  "analyze_variables": { "project_path": "/abs/path/to/project.epp" },
+  "export_project_netlist": { "project_path": "/abs/path/to/project.epp" },
+  "list_epp_projects": { "folder_path": "/abs/path/to/projects" },
+  "list_schematic_components": { "project_path": "/abs/path/to/project.epp" }
+}

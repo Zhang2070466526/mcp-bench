@@ -12,6 +12,7 @@ from .probe import run_probe
 from .eval import run_eval, summarize, load_catalog
 from .client import get_catalog
 from .sweep import run_sweep, summarize_sweep
+from .audit import run_audit, summarize_audit
 
 
 def _ensure_dir(path):
@@ -179,6 +180,55 @@ def cmd_all(args):
     cmd_eval(args)
 
 
+def cmd_audit(args):
+    cfg = load(args.config)
+    out_dir = _ensure_dir(args.out_dir)
+    cases = None
+    if args.cases:
+        with open(args.cases, encoding="utf-8") as f:
+            cases = json.load(f)
+    skip = [s.strip() for s in (args.skip or "").split(",") if s.strip()] or None
+    data = asyncio.run(run_audit(cfg, source_dir=args.source_dir, cases=cases,
+                                 skip=skip, repeat=args.repeat))
+
+    for sv in data:
+        print(f"\n=== {sv['server']} 一致性审计 ===")
+        if sv["schema_issues"]:
+            print(f"  [schema] {len(sv['schema_issues'])} 个工具文档有问题:")
+            for it in sv["schema_issues"]:
+                print(f"    ● {it['name']:<40} {'; '.join(it['issues'])}")
+        else:
+            print("  [schema] 全部通过")
+        if sv["static"]:
+            print(f"  [static] {len(sv['static'])} 个工具 Returns 声明与源码 return 不一致:")
+            for r in sv["static"]:
+                if r.get("opaque"):
+                    print(f"    ● {r['name']:<40} {r['note']}")
+                    continue
+                miss = f" 缺返回={r['missing']}" if r["missing"] else ""
+                extra = f" 多返回={r['extra']}" if r["extra"] else ""
+                nodoc = " (无Returns声明)" if not r.get("returns_doc") else ""
+                print(f"    ● {r['name']:<40}{miss}{extra}{nodoc}")
+        for r in sv["dynamic"]:
+            if "error" in r:
+                print(f"  [实测] {r['name']:<40} 调用异常: {r['error']}")
+                continue
+            tag = ""
+            if r.get("missing") or r.get("extra"):
+                tag = f" ⚠️ 声明↔实际不一致 missing={r['missing']} extra={r['extra']}"
+            elif r.get("isError"):
+                tag = " ⚠️ isError"
+            print(f"  [实测] {r['name']:<40} keys={r['keys']}{tag}")
+
+    for sm in summarize_audit(data):
+        print(f"\n--- {sm['server']} 汇总 ---")
+        print(f"  schema问题 {sm['schema_issue_tools']} / 静态不一致 {sm['static_mismatch']} "
+              f"/ 实测 {sm['dynamic_called']} (不一致 {sm['dynamic_mismatch']})")
+        if sm["mismatch_names"]:
+            print(f"  不一致工具: {', '.join(sm['mismatch_names'])}")
+    _dump(data, os.path.join(out_dir, "audit_report.json"))
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         prog="mcp-bench",
@@ -224,6 +274,14 @@ def main(argv=None):
     sw.add_argument("--skip", help="额外跳过的工具名，逗号分隔")
     sw.add_argument("--repeat", type=int, default=3, help="只读工具重复次数 (默认 3)")
     sw.set_defaults(func=cmd_sweep)
+
+    au = sub.add_parser("audit", help="一致性审计：工具描述/返回声明 与 实际返回结构是否对得上")
+    add_common(au)
+    au.add_argument("--source-dir", help="MCP 服务源码目录（做 Returns 声明 vs 源码 return 的静态比对）")
+    au.add_argument("--cases", help="样例调用 JSON：{\"工具名\": {\"参数\": 值}}，用于有必填参数的工具实测")
+    au.add_argument("--skip", help="额外跳过的工具名，逗号分隔")
+    au.add_argument("--repeat", type=int, default=1, help="只读工具调用次数 (默认 1)")
+    au.set_defaults(func=cmd_audit)
 
     args = p.parse_args(argv)
     args.func(args)

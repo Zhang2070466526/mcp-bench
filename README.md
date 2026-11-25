@@ -21,6 +21,7 @@
 - ✅ 任意 OpenAI 兼容 LLM（DeepSeek / OpenAI / 本地 vLLM / OpenRouter…），`base_url` + `model` 可配
 - ✅ 兼容推理型模型（`content` 为空时回退到 `reasoning_content`）
 - ✅ 输出 JSON（明细）+ Markdown（报告），可直接进 CI
+- ✅ 一致性审计（audit）：抓「工具文档声称返回 X，实际返回 Y」的漂移
 - ✅ 零硬编码：端点、模型、评测集全部走配置
 
 ---
@@ -68,7 +69,7 @@ cp config.example.json config.json
 
 > `api_key_env` 指向环境变量；也可以直接用 `"api_key": "sk-..."`（**别提交到 git**，`config.json` 已在 `.gitignore`）。
 
-### 2. 三个子命令
+### 2. 五个子命令
 
 ```bash
 # 枚举所有服务的工具，导出 output/catalog.json
@@ -90,6 +91,11 @@ mcp-bench all --config config.json --eval-set examples/eval_set.example.json
 # 全量扫测所有工具：分类（只读/需参数/跳过）+ 延迟 + 参数校验
 mcp-bench sweep --config config.json
 mcp-bench sweep --config config.json --skip launch_edi,quit_aedt --repeat 5
+
+# 一致性审计：工具 description/Returns 声明 与 实际返回结构是否对得上
+mcp-bench audit --config config.json
+mcp-bench audit --config config.json --source-dir /path/to/mcp-server/source \
+                --cases examples/audit_cases.example.json
 ```
 
 也可以不安装、直接 `python -m mcp_bench ...`。
@@ -142,6 +148,37 @@ mcp-bench sweep --config config.json --skip launch_edi,quit_aedt --repeat 5
 
 ---
 
+## 一致性审计（audit）
+
+抓「工具 description / Returns 声明 与实际返回结构对不上」的问题 —— 这是 agent 读错字段、选错工具的根源。三层互补检查：
+
+1. **静态 schema 审计**（所有 MCP 通用，无需源码）：description 缺失/过短、必填参数缺说明、缺 outputSchema/注解。
+2. **源码 AST 比对**（`--source-dir`）：提取每个 `@mcp.tool()` 的 Returns docstring 声明字段，对比源码 `return` 语句里的实际 key。
+3. **动态实测**（只读工具 + `--cases` 样例）：真实调用，对比实际返回的顶层 key 与声明字段，报 `missing`（声明了但没返回）/ `extra`（返回了但没声明）。
+
+```bash
+# 只做静态 schema + 只读工具实测（无需源码）
+mcp-bench audit --config config.json
+
+# 加上源码目录，做 Returns 声明 vs 源码 return 的精确比对
+mcp-bench audit --config config.json --source-dir D:/path/to/servers
+
+# 用样例调用文件，对有必填参数的工具也做真实返回比对
+mcp-bench audit --config config.json --source-dir D:/path/to/servers \
+                --cases examples/audit_cases.example.json
+```
+
+`--cases` 文件格式（工具名 → 调用参数）：
+
+```json
+{
+  "get_project_summary": { "project_path": "/abs/path/to/proj.epp" },
+  "list_epp_projects": { "folder_path": "/abs/path/to/projects" }
+}
+```
+
+---
+
 ## 输出
 
 所有产物写入 `--out-dir`（默认 `output/`）：
@@ -150,6 +187,7 @@ mcp-bench sweep --config config.json --skip launch_edi,quit_aedt --repeat 5
 - `probe_results.json` —— 各服务延迟明细
 - `eval_results.json` —— 逐题明细（期望/预测/正确/延迟/token）
 - `eval_report.md` —— 汇总报告（准确率 + 按类别 + 错误用例）
+- `audit_report.json` —— 一致性审计明细（schema 问题 / 静态不一致 / 动态实测 diff）
 
 `eval` 支持 `--catalog output/catalog.json` 复用已抓取的目录，评测多次时不重复连接服务。
 
