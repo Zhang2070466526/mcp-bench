@@ -1,0 +1,27 @@
+{
+  "servers": [
+    {
+      "name": "my-streamable-http-server",
+      "type": "streamable_http",
+      "url": "http://127.0.0.1:8000/mcp"
+    },
+    {
+      "name": "my-sse-server",
+      "type": "sse",
+      "url": "http://127.0.0.1:8001/sse"
+    },
+    {
+      "name": "filesystem",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    }
+  ],
+  "llm": {
+    "base_url": "https://api.deepseek.com/v1",
+    "model": "deepseek-v4-pro",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "temperature": 0,
+    "max_tokens": 2000
+  }
+}

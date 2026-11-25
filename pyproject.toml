@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-bench"
+version = "0.1.0"
+description = "通用 MCP 服务测试与评测工具：性能探测 + 工具选择准确率"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "mcp-bench contributors" }]
+keywords = ["mcp", "model-context-protocol", "benchmark", "eval", "llm", "tool-calling"]
+dependencies = [
+    "mcp>=1.0",
+    "openai>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+mcp-bench = "mcp_bench.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mcp_bench*"]
